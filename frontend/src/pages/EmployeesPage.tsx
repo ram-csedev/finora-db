@@ -83,6 +83,8 @@ export const EmployeesPage: React.FC = () => {
     salary: '',
     b_id: '',
     email: '',
+    status: 'ACTIVE',
+    hire_date: '',
   });
   const [isSubmittingEditEmp, setIsSubmittingEditEmp] = useState(false);
   const [editEmpError, setEditEmpError] = useState<string | null>(null);
@@ -97,6 +99,22 @@ export const EmployeesPage: React.FC = () => {
   });
   const [isSubmittingDuty, setIsSubmittingDuty] = useState(false);
   const [dutyError, setDutyError] = useState<string | null>(null);
+
+  // Duty Edit & Delete State
+  const [selectedDuty, setSelectedDuty] = useState<ResponsibleFor | null>(null);
+  const [isEditDutyModal, setIsEditDutyModal] = useState(false);
+  const [isDeleteDutyModal, setIsDeleteDutyModal] = useState(false);
+  const [editDutyForm, setEditDutyForm] = useState({
+    emp_id: '',
+    b_id: '',
+    role_type: 'OPERATIONAL_SUPERVISOR',
+    status: 'ACTIVE',
+    notes: '',
+  });
+  const [isSubmittingEditDuty, setIsSubmittingEditDuty] = useState(false);
+  const [editDutyError, setEditDutyError] = useState<string | null>(null);
+  const [isDeletingDuty, setIsDeletingDuty] = useState(false);
+  const [deleteDutyError, setDeleteDutyError] = useState<string | null>(null);
 
   // Deletion State
   const [isDeleting, setIsDeleting] = useState(false);
@@ -177,6 +195,8 @@ export const EmployeesPage: React.FC = () => {
       salary: String(emp.salary || ''),
       b_id: String(emp.b_id || ''),
       email: emp.email || '',
+      status: emp.status || 'ACTIVE',
+      hire_date: emp.hire_date ? emp.hire_date.split('T')[0] : '',
     });
     setEditEmpError(null);
     setIsEditEmpModal(true);
@@ -220,12 +240,14 @@ export const EmployeesPage: React.FC = () => {
     setIsSubmittingEditEmp(true);
     setEditEmpError(null);
     try {
-      await api.put(`/employees/${selectedEmp.emp_id}`, {
+      await api.updateEmployee(String(selectedEmp.emp_id), {
         first_name: editEmpForm.first_name.trim(),
         last_name: editEmpForm.last_name.trim() || undefined,
         salary: parseFloat(editEmpForm.salary) || undefined,
         b_id: editEmpForm.b_id || undefined,
         email: editEmpForm.email.trim() || undefined,
+        status: editEmpForm.status as any,
+        hire_date: editEmpForm.hire_date || undefined,
       });
 
       setIsEditEmpModal(false);
@@ -235,6 +257,62 @@ export const EmployeesPage: React.FC = () => {
       setEditEmpError(err.message || 'Failed to update employee.');
     } finally {
       setIsSubmittingEditEmp(false);
+    }
+  };
+
+  // Open Edit Duty
+  const openEditDuty = (duty: ResponsibleFor) => {
+    setSelectedDuty(duty);
+    setEditDutyForm({
+      emp_id: String(duty.emp_id),
+      b_id: String(duty.b_id),
+      role_type: duty.role_type,
+      status: duty.status,
+      notes: duty.notes || '',
+    });
+    setEditDutyError(null);
+    setIsEditDutyModal(true);
+  };
+
+  // Submit Edit Duty
+  const handleEditDuty = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDuty) return;
+    setIsSubmittingEditDuty(true);
+    setEditDutyError(null);
+    try {
+      await api.updateResponsibleFor(String(selectedDuty.rf_id), {
+        emp_id: editDutyForm.emp_id,
+        b_id: editDutyForm.b_id,
+        role_type: editDutyForm.role_type,
+        status: editDutyForm.status as any,
+        notes: editDutyForm.notes.trim() || undefined,
+      });
+
+      setIsEditDutyModal(false);
+      setStatusMessage({ type: 'success', text: `Duty assignment DUTY-${selectedDuty.rf_id} updated successfully.` });
+      fetchDuties();
+    } catch (err: any) {
+      setEditDutyError(err.message || 'Failed to update duty assignment.');
+    } finally {
+      setIsSubmittingEditDuty(false);
+    }
+  };
+
+  // Delete Duty
+  const handleDeleteDuty = async () => {
+    if (!selectedDuty) return;
+    setIsDeletingDuty(true);
+    setDeleteDutyError(null);
+    try {
+      await api.deleteResponsibleFor(String(selectedDuty.rf_id));
+      setIsDeleteDutyModal(false);
+      setStatusMessage({ type: 'success', text: `Duty assignment DUTY-${selectedDuty.rf_id} deleted.` });
+      fetchDuties();
+    } catch (err: any) {
+      setDeleteDutyError(err.message || 'Failed to delete duty assignment.');
+    } finally {
+      setIsDeletingDuty(false);
     }
   };
 
@@ -606,12 +684,13 @@ export const EmployeesPage: React.FC = () => {
                   <TableHead>Assigned Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Shift Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-12 text-obsidian-400 text-xs">
+                    <td colSpan={8} className="text-center py-12 text-obsidian-400 text-xs">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="w-5 h-5 animate-spin text-violet-400" />
                         <span>Loading operational duties...</span>
@@ -619,7 +698,7 @@ export const EmployeesPage: React.FC = () => {
                     </td>
                   </tr>
                 ) : duties.length === 0 ? (
-                  <TableEmpty message="No operational duty assignments recorded." colSpan={7} />
+                  <TableEmpty message="No operational duty assignments recorded." colSpan={8} />
                 ) : (
                   duties.map((d) => (
                     <TableRow key={d.rf_id}>
@@ -639,12 +718,34 @@ export const EmployeesPage: React.FC = () => {
                         {d.assigned_date ? new Date(d.assigned_date).toLocaleDateString() : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={d.status === 'ACTIVE' ? 'emerald' : 'slate'} size="xs" dot>
+                        <Badge variant={d.status === 'ACTIVE' ? 'emerald' : d.status === 'COMPLETED' ? 'cyan' : 'rose'} size="xs" dot>
                           {d.status}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-obsidian-300 text-xs max-w-xs truncate">
                         {d.notes || '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openEditDuty(d)}
+                            className="p-1.5 rounded-lg text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors"
+                            title="Edit Duty Assignment"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDuty(d);
+                              setDeleteDutyError(null);
+                              setIsDeleteDutyModal(true);
+                            }}
+                            className="p-1.5 rounded-lg text-obsidian-400 hover:text-rose-400 hover:bg-obsidian-800 transition-colors"
+                            title="Delete Duty Assignment"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -837,11 +938,31 @@ export const EmployeesPage: React.FC = () => {
             </Select>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Corporate Email"
+              type="email"
+              value={editEmpForm.email}
+              onChange={(e) => setEditEmpForm({ ...editEmpForm, email: e.target.value })}
+            />
+            <Select
+              label="Staff Status"
+              value={editEmpForm.status}
+              onChange={(e) => setEditEmpForm({ ...editEmpForm, status: e.target.value })}
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+              <option value="SUSPENDED">SUSPENDED</option>
+              <option value="ON_LEAVE">ON_LEAVE</option>
+              <option value="TERMINATED">TERMINATED</option>
+            </Select>
+          </div>
+
           <Input
-            label="Corporate Email"
-            type="email"
-            value={editEmpForm.email}
-            onChange={(e) => setEditEmpForm({ ...editEmpForm, email: e.target.value })}
+            label="Hire Date"
+            type="date"
+            value={editEmpForm.hire_date}
+            onChange={(e) => setEditEmpForm({ ...editEmpForm, hire_date: e.target.value })}
           />
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
@@ -938,6 +1059,124 @@ export const EmployeesPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: EDIT OPERATIONAL DUTY (responsible_for) */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isEditDutyModal}
+        onClose={() => setIsEditDutyModal(false)}
+        title={`Edit Duty Assignment: DUTY-${selectedDuty?.rf_id}`}
+        description="Update role designation, operational status, notes, or branch office in responsible_for"
+        size="md"
+      >
+        <form onSubmit={handleEditDuty} className="space-y-4">
+          {editDutyError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{editDutyError}</span>
+            </div>
+          )}
+
+          <Select
+            label="Designated Staff Member *"
+            value={editDutyForm.emp_id}
+            onChange={(e) => setEditDutyForm({ ...editDutyForm, emp_id: e.target.value })}
+            required
+          >
+            {employees.map((e) => (
+              <option key={e.emp_id} value={e.emp_id}>
+                {e.first_name} {e.last_name || ''} (EMP-{e.emp_id})
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Operational Branch Location *"
+            value={editDutyForm.b_id}
+            onChange={(e) => setEditDutyForm({ ...editDutyForm, b_id: e.target.value })}
+            required
+          >
+            {branches.map((b) => (
+              <option key={b.b_id} value={b.b_id}>
+                {b.branch_name} ({b.city})
+              </option>
+            ))}
+          </Select>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Role Designation (Check Constraint) *"
+              value={editDutyForm.role_type}
+              onChange={(e) => setEditDutyForm({ ...editDutyForm, role_type: e.target.value })}
+            >
+              <option value="BRANCH_MANAGER">BRANCH_MANAGER</option>
+              <option value="LOAN_OFFICER">LOAN_OFFICER</option>
+              <option value="TELLER_SUPERVISOR">TELLER_SUPERVISOR</option>
+              <option value="OPERATIONAL_SUPERVISOR">OPERATIONAL_SUPERVISOR</option>
+              <option value="AUDIT_OFFICER">AUDIT_OFFICER</option>
+            </Select>
+
+            <Select
+              label="Shift Status"
+              value={editDutyForm.status}
+              onChange={(e) => setEditDutyForm({ ...editDutyForm, status: e.target.value })}
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="COMPLETED">COMPLETED</option>
+              <option value="REVOKED">REVOKED</option>
+            </Select>
+          </div>
+
+          <Input
+            label="Shift Notes / Operational Scope"
+            value={editDutyForm.notes}
+            onChange={(e) => setEditDutyForm({ ...editDutyForm, notes: e.target.value })}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditDutyModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingEditDuty}>
+              Save Assignment
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: DELETE DUTY CONFIRMATION */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isDeleteDutyModal}
+        onClose={() => setIsDeleteDutyModal(false)}
+        title="Delete Operational Duty Assignment"
+        description="Permanently remove duty ledger entry from CockroachDB table responsible_for"
+        size="sm"
+      >
+        <div className="space-y-4">
+          {deleteDutyError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{deleteDutyError}</span>
+            </div>
+          )}
+
+          <p className="text-sm text-obsidian-300">
+            Are you sure you want to delete assignment <span className="text-white font-mono font-semibold">DUTY-{selectedDuty?.rf_id}</span> ({selectedDuty?.role_type})?
+          </p>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" onClick={() => setIsDeleteDutyModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleDeleteDuty} isLoading={isDeletingDuty}>
+              Delete Assignment
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* ========================================================================= */}

@@ -5,6 +5,8 @@ import {
   CustomerPhone,
   Account,
   AccountHolder,
+  Nominee,
+  Beneficiary,
   Transaction,
   Loan,
   LoanPayment,
@@ -242,6 +244,31 @@ export const api = {
     return this.post<{ success: boolean; data: CustomerPhone }>('/entities/customer_phone', data);
   },
 
+  async updateCustomerPhone(cid: string, phone: string, data: { phone?: string; phone_type?: string; is_primary?: boolean }): Promise<{ success: boolean; message: string; data: CustomerPhone }> {
+    return this.put<{ success: boolean; message: string; data: CustomerPhone }>(`/entities/customer_phone/${cid}/${phone}`, data);
+  },
+
+  async deleteCustomerPhone(cid: string, phone: string): Promise<{ success: boolean; message: string }> {
+    return this.delete<{ success: boolean; message: string }>(`/entities/customer_phone/${cid}/${phone}`);
+  },
+
+  // Beneficiaries
+  async listBeneficiaries(params?: { page?: number; limit?: number; cid?: string; search?: string }): Promise<PaginatedResponse<Beneficiary>> {
+    return this.get<PaginatedResponse<Beneficiary>>('/entities/beneficiary', params);
+  },
+
+  async createBeneficiary(data: Partial<Beneficiary>): Promise<{ success: boolean; message: string; data: Beneficiary }> {
+    return this.post<{ success: boolean; message: string; data: Beneficiary }>('/entities/beneficiary', data);
+  },
+
+  async updateBeneficiary(id: string, data: Partial<Beneficiary>): Promise<{ success: boolean; message: string; data: Beneficiary }> {
+    return this.put<{ success: boolean; message: string; data: Beneficiary }>(`/entities/beneficiary/${id}`, data);
+  },
+
+  async deleteBeneficiary(id: string): Promise<{ success: boolean; message: string }> {
+    return this.delete<{ success: boolean; message: string }>(`/entities/beneficiary/${id}`);
+  },
+
   // Accounts
   async listAccounts(params?: { page?: number; limit?: number; search?: string; b_id?: string; status?: string; acc_type?: string }): Promise<PaginatedResponse<Account>> {
     return this.get<PaginatedResponse<Account>>('/accounts', params);
@@ -267,9 +294,38 @@ export const api = {
     return this.post<{ success: boolean; data: AccountHolder }>('/entities/account_holder', data);
   },
 
+  async updateAccountHolder(accId: string, cid: string, data: { ownership_role?: string; share_percentage?: number; is_primary?: boolean }): Promise<{ success: boolean; message: string; data: AccountHolder }> {
+    return this.put<{ success: boolean; message: string; data: AccountHolder }>(`/entities/account_holder/${accId}/${cid}`, data);
+  },
+
+  async deleteAccountHolder(accId: string, cid: string): Promise<{ success: boolean; message: string }> {
+    return this.delete<{ success: boolean; message: string }>(`/entities/account_holder/${accId}/${cid}`);
+  },
+
+  // Nominees
+  async listNominees(params?: { acc_id?: string; cid?: string }): Promise<PaginatedResponse<Nominee>> {
+    return this.get<PaginatedResponse<Nominee>>('/entities/nominee', params);
+  },
+
+  async createNominee(data: Partial<Nominee>): Promise<{ success: boolean; message: string; data: Nominee }> {
+    return this.post<{ success: boolean; message: string; data: Nominee }>('/entities/nominee', data);
+  },
+
+  async updateNominee(id: string, data: Partial<Nominee>): Promise<{ success: boolean; message: string; data: Nominee }> {
+    return this.put<{ success: boolean; message: string; data: Nominee }>(`/entities/nominee/${id}`, data);
+  },
+
+  async deleteNominee(id: string): Promise<{ success: boolean; message: string }> {
+    return this.delete<{ success: boolean; message: string }>(`/entities/nominee/${id}`);
+  },
+
   // Transactions & Core Banking Services
   async listTransactions(params?: { page?: number; limit?: number; search?: string; acc_id?: string; type?: string; status?: string }): Promise<PaginatedResponse<Transaction>> {
     return this.get<PaginatedResponse<Transaction>>('/transactions', params);
+  },
+
+  async updateTransaction(id: string, data: { description?: string }): Promise<{ success: boolean; message: string; data: Transaction }> {
+    return this.put<{ success: boolean; message: string; data: Transaction }>(`/transactions/${id}`, data);
   },
 
   async deposit(data: { acc_id: string; amount: number; mode?: string; description?: string; emp_id?: string }) {
@@ -293,6 +349,10 @@ export const api = {
     return this.post<{ success: boolean; message: string; data: Loan }>('/loans', data);
   },
 
+  async updateLoan(id: string, data: Partial<Loan>): Promise<{ success: boolean; message: string; data: Loan }> {
+    return this.put<{ success: boolean; message: string; data: Loan }>(`/loans/${id}`, data);
+  },
+
   async listLoanPayments(params?: { page?: number; limit?: number; l_id?: string }): Promise<PaginatedResponse<LoanPayment>> {
     return this.get<PaginatedResponse<LoanPayment>>('/loan-payments', params);
   },
@@ -301,8 +361,20 @@ export const api = {
     return this.post<{ success: boolean; message: string; payment: LoanPayment }>('/banking/loan-payment', data);
   },
 
+  async updateLoanPayment(id: string, data: { remarks?: string; payment_mode?: string }): Promise<{ success: boolean; message: string; data: LoanPayment }> {
+    return this.put<{ success: boolean; message: string; data: LoanPayment }>(`/loan-payments/${id}`, data);
+  },
+
   async listCreditCards(params?: { page?: number; limit?: number; search?: string; cid?: string; status?: string }): Promise<PaginatedResponse<CreditCard>> {
     return this.get<PaginatedResponse<CreditCard>>('/creditcards', params);
+  },
+
+  async createCreditCard(data: Partial<CreditCard>): Promise<{ success: boolean; message: string; data: CreditCard }> {
+    return this.post<{ success: boolean; message: string; data: CreditCard }>('/creditcards', data);
+  },
+
+  async updateCreditCard(pno: string, data: Partial<CreditCard>): Promise<{ success: boolean; message: string; data: CreditCard }> {
+    return this.put<{ success: boolean; message: string; data: CreditCard }>(`/creditcards/${pno}`, data);
   },
 
   // Branches & Staff
@@ -314,6 +386,10 @@ export const api = {
     return this.post<{ success: boolean; message: string; data: Branch }>('/branches', data);
   },
 
+  async updateBranch(id: string, data: Partial<Branch>): Promise<{ success: boolean; message: string; data: Branch }> {
+    return this.put<{ success: boolean; message: string; data: Branch }>(`/branches/${id}`, data);
+  },
+
   async listEmployees(params?: { page?: number; limit?: number; search?: string; b_id?: string }): Promise<PaginatedResponse<Employee>> {
     return this.get<PaginatedResponse<Employee>>('/employees', params);
   },
@@ -322,12 +398,24 @@ export const api = {
     return this.post<{ success: boolean; message: string; data: Employee }>('/employees', data);
   },
 
+  async updateEmployee(id: string, data: Partial<Employee>): Promise<{ success: boolean; message: string; data: Employee }> {
+    return this.put<{ success: boolean; message: string; data: Employee }>(`/employees/${id}`, data);
+  },
+
   async listResponsibleFor(params?: { page?: number; limit?: number; search?: string; emp_id?: string; b_id?: string; status?: string }): Promise<PaginatedResponse<ResponsibleFor>> {
     return this.get<PaginatedResponse<ResponsibleFor>>('/responsible-for', params);
   },
 
   async createResponsibleFor(data: Partial<ResponsibleFor>) {
     return this.post<{ success: boolean; message: string; data: ResponsibleFor }>('/responsible-for', data);
+  },
+
+  async updateResponsibleFor(id: string, data: Partial<ResponsibleFor>): Promise<{ success: boolean; message: string; data: ResponsibleFor }> {
+    return this.put<{ success: boolean; message: string; data: ResponsibleFor }>(`/responsible-for/${id}`, data);
+  },
+
+  async deleteResponsibleFor(id: string): Promise<{ success: boolean; message: string }> {
+    return this.delete<{ success: boolean; message: string }>(`/responsible-for/${id}`);
   },
 
   // Database Metadata & Architecture Endpoints

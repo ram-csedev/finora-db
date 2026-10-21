@@ -52,7 +52,7 @@ export const AccountsPage: React.FC = () => {
   // Modals
   const [isOpenAccountModal, setIsOpenAccountModal] = useState(false);
   const [isDetailsModal, setIsDetailsModal] = useState(false);
-  const [isEditStatusModal, setIsEditStatusModal] = useState(false);
+  const [isEditAccountModal, setIsEditAccountModal] = useState(false);
   const [isDeleteModal, setIsDeleteModal] = useState(false);
 
   // Active / Selected Account
@@ -77,9 +77,39 @@ export const AccountsPage: React.FC = () => {
   const [newHolderShare, setNewHolderShare] = useState('50.00');
   const [isAddingHolder, setIsAddingHolder] = useState(false);
 
-  // Form State: Edit Account Status
-  const [editStatus, setEditStatus] = useState<Account['status']>('ACTIVE');
-  const [isSubmittingStatus, setIsSubmittingStatus] = useState(false);
+  // Form State: Edit Account
+  const [editAccountForm, setEditAccountForm] = useState({
+    acc_type: 'SAVINGS' as Account['acc_type'],
+    b_id: '',
+    status: 'ACTIVE' as Account['status'],
+  });
+  const [isSubmittingEditAccount, setIsSubmittingEditAccount] = useState(false);
+  const [editAccountError, setEditAccountError] = useState<string | null>(null);
+
+  // Holder Edit State
+  const [selectedHolder, setSelectedHolder] = useState<AccountHolder | null>(null);
+  const [isEditHolderModal, setIsEditHolderModal] = useState(false);
+  const [editHolderForm, setEditHolderForm] = useState({
+    ownership_role: 'JOINT' as AccountHolder['ownership_role'],
+    share_percentage: '50.00',
+    is_primary: false,
+  });
+  const [isSubmittingEditHolder, setIsSubmittingEditHolder] = useState(false);
+  const [editHolderError, setEditHolderError] = useState<string | null>(null);
+
+  // Nominee Add & Edit State
+  const [isAddNomineeModal, setIsAddNomineeModal] = useState(false);
+  const [isEditNomineeModal, setIsEditNomineeModal] = useState(false);
+  const [selectedNominee, setSelectedNominee] = useState<Nominee | null>(null);
+  const [nomineeForm, setNomineeForm] = useState({
+    first_name: '',
+    last_name: '',
+    relationship: 'SPOUSE',
+    dob: '',
+    contact_phone: '',
+  });
+  const [isSubmittingNominee, setIsSubmittingNominee] = useState(false);
+  const [nomineeError, setNomineeError] = useState<string | null>(null);
 
   // Delete State
   const [isDeleting, setIsDeleting] = useState(false);
@@ -222,20 +252,178 @@ export const AccountsPage: React.FC = () => {
     }
   };
 
-  // Update Account Status
-  const handleUpdateStatus = async (e: React.FormEvent) => {
+  // Open Edit Account Modal
+  const openEditAccount = (acc: Account) => {
+    setSelectedAccount(acc);
+    setEditAccountForm({
+      acc_type: acc.acc_type,
+      b_id: String(acc.b_id),
+      status: acc.status,
+    });
+    setEditAccountError(null);
+    setIsEditAccountModal(true);
+  };
+
+  // Submit Edit Account
+  const handleUpdateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAccount) return;
-    setIsSubmittingStatus(true);
+    setIsSubmittingEditAccount(true);
+    setEditAccountError(null);
     try {
-      await api.updateAccount(selectedAccount.acc_id, { status: editStatus });
-      setIsEditStatusModal(false);
-      setStatusMessage({ type: 'success', text: `Account ACC-${selectedAccount.acc_id} status updated to ${editStatus}.` });
+      await api.updateAccount(selectedAccount.acc_id, {
+        acc_type: editAccountForm.acc_type,
+        b_id: editAccountForm.b_id,
+        status: editAccountForm.status,
+      });
+      setIsEditAccountModal(false);
+      setStatusMessage({ type: 'success', text: `Account ACC-${selectedAccount.acc_id} updated successfully.` });
       fetchAccounts();
     } catch (err: any) {
-      alert(err.message || 'Failed to update account status.');
+      setEditAccountError(err.message || 'Failed to update account.');
     } finally {
-      setIsSubmittingStatus(false);
+      setIsSubmittingEditAccount(false);
+    }
+  };
+
+  // Holder handlers
+  const openEditHolder = (h: AccountHolder) => {
+    setSelectedHolder(h);
+    setEditHolderForm({
+      ownership_role: h.ownership_role,
+      share_percentage: String(h.share_percentage || '50.00'),
+      is_primary: h.is_primary,
+    });
+    setEditHolderError(null);
+    setIsEditHolderModal(true);
+  };
+
+  const handleUpdateHolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccount || !selectedHolder) return;
+    setIsSubmittingEditHolder(true);
+    setEditHolderError(null);
+    try {
+      await api.updateAccountHolder(selectedAccount.acc_id, selectedHolder.cid, {
+        ownership_role: editHolderForm.ownership_role,
+        share_percentage: parseFloat(editHolderForm.share_percentage) || 50.0,
+        is_primary: editHolderForm.is_primary,
+      });
+      const res = await api.listAccountHolders({ acc_id: selectedAccount.acc_id });
+      setAccountHolders(res.data || []);
+      setIsEditHolderModal(false);
+      setStatusMessage({ type: 'success', text: `Updated ownership details for customer CUST-${selectedHolder.cid}.` });
+    } catch (err: any) {
+      setEditHolderError(err.message || 'Failed to update holder.');
+    } finally {
+      setIsSubmittingEditHolder(false);
+    }
+  };
+
+  const handleDeleteHolder = async (cid: string) => {
+    if (!selectedAccount) return;
+    if (accountHolders.length <= 1) {
+      alert('Cannot remove the sole account holder. Every account must have at least one holder.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to remove holder CUST-${cid} from ACC-${selectedAccount.acc_id}?`)) return;
+    try {
+      await api.deleteAccountHolder(selectedAccount.acc_id, cid);
+      const res = await api.listAccountHolders({ acc_id: selectedAccount.acc_id });
+      setAccountHolders(res.data || []);
+      setStatusMessage({ type: 'success', text: `Removed joint holder CUST-${cid}.` });
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove holder.');
+    }
+  };
+
+  // Nominee handlers
+  const openAddNominee = () => {
+    setNomineeForm({
+      first_name: '',
+      last_name: '',
+      relationship: 'SPOUSE',
+      dob: '',
+      contact_phone: '',
+    });
+    setNomineeError(null);
+    setIsAddNomineeModal(true);
+  };
+
+  const handleAddNominee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccount) return;
+    setIsSubmittingNominee(true);
+    setNomineeError(null);
+    try {
+      if (!nomineeForm.first_name.trim()) throw new Error('First name is required.');
+      await api.createNominee({
+        acc_id: selectedAccount.acc_id,
+        first_name: nomineeForm.first_name.trim(),
+        last_name: nomineeForm.last_name.trim() || undefined,
+        relationship: nomineeForm.relationship,
+        dob: nomineeForm.dob || undefined,
+        contact_phone: nomineeForm.contact_phone.trim() || undefined,
+      });
+      const nRes = await api.listNominees({ acc_id: selectedAccount.acc_id });
+      setAccountNominees(nRes.data || []);
+      setIsAddNomineeModal(false);
+      setStatusMessage({ type: 'success', text: 'Nominee designation added.' });
+    } catch (err: any) {
+      setNomineeError(err.message || 'Failed to add nominee.');
+    } finally {
+      setIsSubmittingNominee(false);
+    }
+  };
+
+  const openEditNominee = (nom: Nominee) => {
+    setSelectedNominee(nom);
+    setNomineeForm({
+      first_name: nom.first_name || '',
+      last_name: nom.last_name || '',
+      relationship: nom.relationship || 'SPOUSE',
+      dob: nom.dob ? nom.dob.split('T')[0] : '',
+      contact_phone: nom.contact_phone || '',
+    });
+    setNomineeError(null);
+    setIsEditNomineeModal(true);
+  };
+
+  const handleUpdateNominee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAccount || !selectedNominee) return;
+    setIsSubmittingNominee(true);
+    setNomineeError(null);
+    try {
+      if (!nomineeForm.first_name.trim()) throw new Error('First name is required.');
+      await api.updateNominee(String(selectedNominee.n_id), {
+        first_name: nomineeForm.first_name.trim(),
+        last_name: nomineeForm.last_name.trim() || undefined,
+        relationship: nomineeForm.relationship,
+        dob: nomineeForm.dob || undefined,
+        contact_phone: nomineeForm.contact_phone.trim() || undefined,
+      });
+      const nRes = await api.listNominees({ acc_id: selectedAccount.acc_id });
+      setAccountNominees(nRes.data || []);
+      setIsEditNomineeModal(false);
+      setStatusMessage({ type: 'success', text: `Nominee ${nomineeForm.first_name} updated successfully.` });
+    } catch (err: any) {
+      setNomineeError(err.message || 'Failed to update nominee.');
+    } finally {
+      setIsSubmittingNominee(false);
+    }
+  };
+
+  const handleDeleteNominee = async (nId: string) => {
+    if (!selectedAccount) return;
+    if (!confirm('Are you sure you want to remove this nominee designation?')) return;
+    try {
+      await api.deleteNominee(String(nId));
+      const nRes = await api.listNominees({ acc_id: selectedAccount.acc_id });
+      setAccountNominees(nRes.data || []);
+      setStatusMessage({ type: 'success', text: 'Nominee designation removed.' });
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete nominee.');
     }
   };
 
@@ -471,13 +659,9 @@ export const AccountsPage: React.FC = () => {
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          setSelectedAccount(acc);
-                          setEditStatus(acc.status);
-                          setIsEditStatusModal(true);
-                        }}
+                        onClick={() => openEditAccount(acc)}
                         className="p-1.5 rounded-lg text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors"
-                        title="Change Account Status"
+                        title="Edit Account Details & Branch Transfer"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -617,6 +801,22 @@ export const AccountsPage: React.FC = () => {
                         <span className="text-obsidian-400 font-mono text-[11px]">
                           {h.share_percentage}% Share
                         </span>
+                        <button
+                          onClick={() => openEditHolder(h)}
+                          className="p-1 rounded text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors"
+                          title="Edit Ownership Role & Share"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        {!h.is_primary && (
+                          <button
+                            onClick={() => handleDeleteHolder(h.cid)}
+                            className="p-1 rounded text-obsidian-400 hover:text-rose-400 hover:bg-obsidian-800 transition-colors"
+                            title="Remove Joint Holder"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -669,21 +869,47 @@ export const AccountsPage: React.FC = () => {
 
             {/* Nominees */}
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                Nominee Designations (nominee 1:N)
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  Nominee Designations (nominee 1:N)
+                </h4>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={openAddNominee}
+                  icon={<PlusCircle className="w-3.5 h-3.5" />}
+                >
+                  Add Nominee
+                </Button>
+              </div>
               <div className="p-3 rounded-xl bg-obsidian-950 border border-obsidian-800">
                 {accountNominees.length === 0 ? (
                   <p className="text-xs text-obsidian-500 italic">No nominee currently assigned to this account.</p>
                 ) : (
                   <div className="space-y-1.5">
                     {accountNominees.map((n, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-obsidian-800/60 last:border-0">
-                        <span className="text-white font-medium">{n.first_name} {n.last_name || ''}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-obsidian-400 font-mono text-[11px]">{n.relationship}</span>
+                      <div key={i} className="flex items-center justify-between text-xs py-1.5 border-b border-obsidian-800/60 last:border-0">
+                        <div>
+                          <span className="text-white font-medium">{n.first_name} {n.last_name || ''}</span>
+                          <span className="text-obsidian-400 text-[11px] ml-2">({n.relationship})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <span className="text-obsidian-400 font-mono text-[11px]">{n.contact_phone || '—'}</span>
+                          <button
+                            onClick={() => openEditNominee(n)}
+                            className="p-1 rounded text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors"
+                            title="Edit Nominee Details"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteNominee(n.n_id)}
+                            className="p-1 rounded text-obsidian-400 hover:text-rose-400 hover:bg-obsidian-800 transition-colors"
+                            title="Remove Nominee"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -774,20 +1000,63 @@ export const AccountsPage: React.FC = () => {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* MODAL 3: EDIT ACCOUNT STATUS */}
+      {/* MODAL 3: EDIT ACCOUNT (TYPE, BRANCH TRANSFER, STATUS) */}
       {/* ========================================================================= */}
       <Modal
-        isOpen={isEditStatusModal}
-        onClose={() => setIsEditStatusModal(false)}
-        title={`Update Status: ACC-${selectedAccount?.acc_id}`}
-        description="Update operational lifecycle state of the account"
-        size="sm"
+        isOpen={isEditAccountModal}
+        onClose={() => setIsEditAccountModal(false)}
+        title={`Edit Account: ACC-${selectedAccount?.acc_id}`}
+        description="Update account type, transfer home branch, or lifecycle status"
+        size="md"
       >
-        <form onSubmit={handleUpdateStatus} className="space-y-4">
+        <form onSubmit={handleUpdateAccount} className="space-y-4">
+          {editAccountError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{editAccountError}</span>
+            </div>
+          )}
+
+          <div className="p-3 rounded-lg bg-obsidian-900 border border-obsidian-800 text-xs flex justify-between items-center">
+            <span className="text-obsidian-400 font-mono">Current Ledger Balance:</span>
+            <span className="font-mono font-bold text-emerald-400">
+              ₹{selectedAccount ? parseFloat(String(selectedAccount.balance)).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+            </span>
+          </div>
+          <p className="text-[11px] text-obsidian-500 italic">
+            Note: Account balance is ledger-driven and can only be altered through transactional deposits, withdrawals, or transfers.
+          </p>
+
           <Select
-            label="Operational Status"
-            value={editStatus}
-            onChange={(e) => setEditStatus(e.target.value as any)}
+            label="Account Classification *"
+            value={editAccountForm.acc_type}
+            onChange={(e) => setEditAccountForm({ ...editAccountForm, acc_type: e.target.value as any })}
+            required
+          >
+            <option value="SAVINGS">SAVINGS</option>
+            <option value="CURRENT">CURRENT</option>
+            <option value="SALARY">SALARY</option>
+            <option value="FIXED_DEPOSIT">FIXED_DEPOSIT</option>
+          </Select>
+
+          <Select
+            label="Home Branch Office (Branch Transfer) *"
+            value={editAccountForm.b_id}
+            onChange={(e) => setEditAccountForm({ ...editAccountForm, b_id: e.target.value })}
+            required
+          >
+            {branches.map((b) => (
+              <option key={b.b_id} value={b.b_id}>
+                {b.branch_name} ({b.city}) — IFSC: {b.ifsc}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Operational Status *"
+            value={editAccountForm.status}
+            onChange={(e) => setEditAccountForm({ ...editAccountForm, status: e.target.value as any })}
+            required
           >
             <option value="ACTIVE">ACTIVE (Normal Operations)</option>
             <option value="DORMANT">DORMANT (Inactivity Flag)</option>
@@ -796,11 +1065,208 @@ export const AccountsPage: React.FC = () => {
           </Select>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
-            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditStatusModal(false)}>
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditAccountModal(false)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingStatus}>
-              Save Status
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingEditAccount}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: EDIT JOINT HOLDER DESIGNATION */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isEditHolderModal}
+        onClose={() => setIsEditHolderModal(false)}
+        title={`Edit Holder: CUST-${selectedHolder?.cid}`}
+        description={`Update ownership role and share percentage on ACC-${selectedAccount?.acc_id}`}
+        size="sm"
+      >
+        <form onSubmit={handleUpdateHolder} className="space-y-4">
+          {editHolderError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{editHolderError}</span>
+            </div>
+          )}
+
+          <Select
+            label="Ownership Role Designation"
+            value={editHolderForm.ownership_role}
+            onChange={(e) => setEditHolderForm({ ...editHolderForm, ownership_role: e.target.value as any })}
+          >
+            <option value="PRIMARY">PRIMARY</option>
+            <option value="JOINT">JOINT</option>
+            <option value="SECONDARY">SECONDARY</option>
+            <option value="GUARDIAN">GUARDIAN</option>
+          </Select>
+
+          <Input
+            label="Ownership Share (%)"
+            type="number"
+            step="0.01"
+            min="0"
+            max="100"
+            value={editHolderForm.share_percentage}
+            onChange={(e) => setEditHolderForm({ ...editHolderForm, share_percentage: e.target.value })}
+            required
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditHolderModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingEditHolder}>
+              Save Holder
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: ADD NOMINEE */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isAddNomineeModal}
+        onClose={() => setIsAddNomineeModal(false)}
+        title="Designate Account Nominee"
+        description={`Register succession nominee for ACC-${selectedAccount?.acc_id}`}
+        size="md"
+      >
+        <form onSubmit={handleAddNominee} className="space-y-4">
+          {nomineeError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{nomineeError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="First Name *"
+              value={nomineeForm.first_name}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, first_name: e.target.value })}
+              required
+            />
+            <Input
+              label="Last Name"
+              value={nomineeForm.last_name}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, last_name: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Relationship *"
+              value={nomineeForm.relationship}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, relationship: e.target.value })}
+            >
+              <option value="SPOUSE">SPOUSE</option>
+              <option value="SON">SON</option>
+              <option value="DAUGHTER">DAUGHTER</option>
+              <option value="FATHER">FATHER</option>
+              <option value="MOTHER">MOTHER</option>
+              <option value="BROTHER">BROTHER</option>
+              <option value="SISTER">SISTER</option>
+              <option value="OTHER">OTHER</option>
+            </Select>
+            <Input
+              label="Date of Birth"
+              type="date"
+              value={nomineeForm.dob}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, dob: e.target.value })}
+            />
+          </div>
+
+          <Input
+            label="Contact Phone"
+            placeholder="+91 98765 43210"
+            value={nomineeForm.contact_phone}
+            onChange={(e) => setNomineeForm({ ...nomineeForm, contact_phone: e.target.value })}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsAddNomineeModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingNominee}>
+              Designate Nominee
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: EDIT NOMINEE */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isEditNomineeModal}
+        onClose={() => setIsEditNomineeModal(false)}
+        title={`Edit Nominee: ${selectedNominee?.first_name}`}
+        description="Update succession contact information"
+        size="md"
+      >
+        <form onSubmit={handleUpdateNominee} className="space-y-4">
+          {nomineeError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{nomineeError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="First Name *"
+              value={nomineeForm.first_name}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, first_name: e.target.value })}
+              required
+            />
+            <Input
+              label="Last Name"
+              value={nomineeForm.last_name}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, last_name: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Relationship *"
+              value={nomineeForm.relationship}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, relationship: e.target.value })}
+            >
+              <option value="SPOUSE">SPOUSE</option>
+              <option value="SON">SON</option>
+              <option value="DAUGHTER">DAUGHTER</option>
+              <option value="FATHER">FATHER</option>
+              <option value="MOTHER">MOTHER</option>
+              <option value="BROTHER">BROTHER</option>
+              <option value="SISTER">SISTER</option>
+              <option value="OTHER">OTHER</option>
+            </Select>
+            <Input
+              label="Date of Birth"
+              type="date"
+              value={nomineeForm.dob}
+              onChange={(e) => setNomineeForm({ ...nomineeForm, dob: e.target.value })}
+            />
+          </div>
+
+          <Input
+            label="Contact Phone"
+            placeholder="+91 98765 43210"
+            value={nomineeForm.contact_phone}
+            onChange={(e) => setNomineeForm({ ...nomineeForm, contact_phone: e.target.value })}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditNomineeModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingNominee}>
+              Save Nominee
             </Button>
           </div>
         </form>

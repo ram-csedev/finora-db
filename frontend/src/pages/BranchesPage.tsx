@@ -21,7 +21,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Input } from '../components/ui/Input';
+import { Input, Select } from '../components/ui/Input';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from '../components/ui/Table';
 import { Modal } from '../components/ui/Modal';
 import { DeleteConfirmModal } from '../components/ui/DeleteConfirmModal';
@@ -72,6 +72,7 @@ export const BranchesPage: React.FC = () => {
     state: '',
     pincode: '',
     contact: '',
+    status: 'ACTIVE' as Branch['status'],
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -133,6 +134,7 @@ export const BranchesPage: React.FC = () => {
       state: branch.state || '',
       pincode: branch.pincode || '',
       contact: branch.contact || '',
+      status: branch.status || 'ACTIVE',
     });
     setEditError(null);
     setIsEditModal(true);
@@ -181,12 +183,13 @@ export const BranchesPage: React.FC = () => {
     setIsSubmittingEdit(true);
     setEditError(null);
     try {
-      await api.put(`/branches/${selectedBranch.b_id}`, {
+      await api.updateBranch(selectedBranch.b_id, {
         branch_name: editForm.branch_name.trim(),
         city: editForm.city.trim() || undefined,
         state: editForm.state.trim() || undefined,
         pincode: editForm.pincode.trim() || undefined,
         contact: editForm.contact.trim() || undefined,
+        status: editForm.status,
       });
 
       setIsEditModal(false);
@@ -637,12 +640,23 @@ export const BranchesPage: React.FC = () => {
             />
           </div>
 
-          <Input
-            label="Phone Contact (max 15 chars)"
-            value={editForm.contact}
-            onChange={(e) => setEditForm({ ...editForm, contact: e.target.value })}
-            maxLength={15}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Phone Contact (max 15 chars)"
+              value={editForm.contact}
+              onChange={(e) => setEditForm({ ...editForm, contact: e.target.value })}
+              maxLength={15}
+            />
+            <Select
+              label="Branch Status"
+              value={editForm.status}
+              onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+              <option value="CLOSED">CLOSED</option>
+            </Select>
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
             <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditModal(false)}>

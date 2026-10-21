@@ -31,7 +31,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmp
 import { Modal } from '../components/ui/Modal';
 import { DeleteConfirmModal } from '../components/ui/DeleteConfirmModal';
 import { api, ApiError } from '../api/client';
-import { Customer, CustomerPhone, AccountHolder, Loan, CreditCard as CreditCardType, Employee } from '../types';
+import { Customer, CustomerPhone, AccountHolder, Loan, CreditCard as CreditCardType, Employee, Beneficiary } from '../types';
 
 export const CustomersPage: React.FC = () => {
   // State: Data & Pagination
@@ -61,12 +61,39 @@ export const CustomersPage: React.FC = () => {
   const [customerHoldings, setCustomerHoldings] = useState<AccountHolder[]>([]);
   const [customerLoans, setCustomerLoans] = useState<Loan[]>([]);
   const [customerCards, setCustomerCards] = useState<CreditCardType[]>([]);
+  const [customerBeneficiaries, setCustomerBeneficiaries] = useState<Beneficiary[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   // New Phone state in Details Modal
   const [newPhone, setNewPhone] = useState('');
   const [newPhoneType, setNewPhoneType] = useState('MOBILE');
   const [isAddingPhone, setIsAddingPhone] = useState(false);
+
+  // Edit Phone Modal State
+  const [selectedPhone, setSelectedPhone] = useState<CustomerPhone | null>(null);
+  const [isEditPhoneModal, setIsEditPhoneModal] = useState(false);
+  const [editPhoneForm, setEditPhoneForm] = useState({
+    phone: '',
+    phone_type: 'MOBILE',
+    is_primary: false,
+  });
+  const [isSubmittingEditPhone, setIsSubmittingEditPhone] = useState(false);
+  const [editPhoneError, setEditPhoneError] = useState<string | null>(null);
+
+  // Beneficiaries Modals State
+  const [isAddBeneficiaryModal, setIsAddBeneficiaryModal] = useState(false);
+  const [isEditBeneficiaryModal, setIsEditBeneficiaryModal] = useState(false);
+  const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
+  const [beneficiaryForm, setBeneficiaryForm] = useState({
+    nickname: '',
+    beneficiary_name: '',
+    destination_account_num: '',
+    destination_ifsc: '',
+    bank_name: '',
+    is_verified: true,
+  });
+  const [isSubmittingBeneficiary, setIsSubmittingBeneficiary] = useState(false);
+  const [beneficiaryError, setBeneficiaryError] = useState<string | null>(null);
 
   // Form State: Create
   const [createForm, setCreateForm] = useState({
@@ -94,6 +121,7 @@ export const CustomersPage: React.FC = () => {
     state: '',
     pincode: '',
     emp_id: '',
+    status: 'ACTIVE' as Customer['status'],
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -142,23 +170,25 @@ export const CustomersPage: React.FC = () => {
     fetchCustomers();
   }, [fetchCustomers]);
 
-  // Load Full Customer Details (Phones, Accounts, Loans, Cards)
+  // Load Full Customer Details (Phones, Accounts, Loans, Cards, Beneficiaries)
   const openDetailsModal = async (cust: Customer) => {
     setSelectedCustomer(cust);
     setIsDetailsOpen(true);
     setIsLoadingDetails(true);
     setNewPhone('');
     try {
-      const [phonesRes, holdingsRes, loansRes, cardsRes] = await Promise.all([
+      const [phonesRes, holdingsRes, loansRes, cardsRes, beneficiariesRes] = await Promise.all([
         api.getCustomerPhones(cust.cid).catch(() => ({ data: [] })),
         api.listAccountHolders({ cid: cust.cid }).catch(() => ({ data: [] })),
         api.listLoans({ cid: cust.cid }).catch(() => ({ data: [] })),
         api.listCreditCards({ cid: cust.cid }).catch(() => ({ data: [] })),
+        api.listBeneficiaries({ cid: cust.cid }).catch(() => ({ data: [] })),
       ]);
       setCustomerPhones(phonesRes.data || []);
       setCustomerHoldings(holdingsRes.data || []);
       setCustomerLoans(loansRes.data || []);
       setCustomerCards(cardsRes.data || []);
+      setCustomerBeneficiaries(beneficiariesRes.data || []);
     } catch (err) {
       // non-blocking fallback
     } finally {
@@ -187,6 +217,160 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
+  // Edit Phone
+  const openEditPhone = (p: CustomerPhone) => {
+    setSelectedPhone(p);
+    setEditPhoneForm({
+      phone: p.phone,
+      phone_type: p.phone_type || 'MOBILE',
+      is_primary: p.is_primary,
+    });
+    setEditPhoneError(null);
+    setIsEditPhoneModal(true);
+  };
+
+  const handleUpdatePhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer || !selectedPhone) return;
+    setIsSubmittingEditPhone(true);
+    setEditPhoneError(null);
+    try {
+      if (!editPhoneForm.phone.trim()) throw new Error('Phone number is required.');
+      await api.updateCustomerPhone(selectedCustomer.cid, selectedPhone.phone, {
+        phone: editPhoneForm.phone.trim(),
+        phone_type: editPhoneForm.phone_type,
+        is_primary: editPhoneForm.is_primary,
+      });
+      const res = await api.getCustomerPhones(selectedCustomer.cid);
+      setCustomerPhones(res.data || []);
+      setIsEditPhoneModal(false);
+      setStatusMessage({ type: 'success', text: 'Phone number updated successfully.' });
+    } catch (err: any) {
+      setEditPhoneError(err.message || 'Failed to update phone number.');
+    } finally {
+      setIsSubmittingEditPhone(false);
+    }
+  };
+
+  const handleDeletePhone = async (phone: string) => {
+    if (!selectedCustomer) return;
+    if (customerPhones.length <= 1) {
+      alert('Cannot delete the only registered phone number for this customer.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to remove phone number ${phone}?`)) return;
+    try {
+      await api.deleteCustomerPhone(selectedCustomer.cid, phone);
+      const res = await api.getCustomerPhones(selectedCustomer.cid);
+      setCustomerPhones(res.data || []);
+      setStatusMessage({ type: 'success', text: `Phone number ${phone} removed.` });
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete phone number.');
+    }
+  };
+
+  // Beneficiary Handlers
+  const openAddBeneficiary = () => {
+    setBeneficiaryForm({
+      nickname: '',
+      beneficiary_name: '',
+      destination_account_num: '',
+      destination_ifsc: 'FINO0001001',
+      bank_name: 'Finora Bank',
+      is_verified: true,
+    });
+    setBeneficiaryError(null);
+    setIsAddBeneficiaryModal(true);
+  };
+
+  const handleAddBeneficiary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+    setIsSubmittingBeneficiary(true);
+    setBeneficiaryError(null);
+    try {
+      if (!beneficiaryForm.nickname.trim()) throw new Error('Nickname is required.');
+      if (!beneficiaryForm.beneficiary_name.trim()) throw new Error('Beneficiary name is required.');
+      if (!beneficiaryForm.destination_account_num.trim()) throw new Error('Destination account number is required.');
+      if (!beneficiaryForm.destination_ifsc.trim()) throw new Error('IFSC code is required.');
+
+      await api.createBeneficiary({
+        cid: selectedCustomer.cid,
+        nickname: beneficiaryForm.nickname.trim(),
+        beneficiary_name: beneficiaryForm.beneficiary_name.trim(),
+        destination_account_num: beneficiaryForm.destination_account_num.trim(),
+        destination_ifsc: beneficiaryForm.destination_ifsc.trim().toUpperCase(),
+        bank_name: beneficiaryForm.bank_name.trim() || undefined,
+        is_verified: beneficiaryForm.is_verified,
+      });
+
+      const bRes = await api.listBeneficiaries({ cid: selectedCustomer.cid });
+      setCustomerBeneficiaries(bRes.data || []);
+      setIsAddBeneficiaryModal(false);
+      setStatusMessage({ type: 'success', text: `Beneficiary "${beneficiaryForm.nickname}" added.` });
+    } catch (err: any) {
+      setBeneficiaryError(err.message || 'Failed to add beneficiary.');
+    } finally {
+      setIsSubmittingBeneficiary(false);
+    }
+  };
+
+  const openEditBeneficiary = (b: Beneficiary) => {
+    setSelectedBeneficiary(b);
+    setBeneficiaryForm({
+      nickname: b.nickname || '',
+      beneficiary_name: b.beneficiary_name || '',
+      destination_account_num: b.destination_account_num || '',
+      destination_ifsc: b.destination_ifsc || '',
+      bank_name: b.bank_name || '',
+      is_verified: b.is_verified ?? true,
+    });
+    setBeneficiaryError(null);
+    setIsEditBeneficiaryModal(true);
+  };
+
+  const handleUpdateBeneficiary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer || !selectedBeneficiary) return;
+    setIsSubmittingBeneficiary(true);
+    setBeneficiaryError(null);
+    try {
+      if (!beneficiaryForm.nickname.trim()) throw new Error('Nickname is required.');
+      if (!beneficiaryForm.beneficiary_name.trim()) throw new Error('Beneficiary legal name is required.');
+
+      await api.updateBeneficiary(selectedBeneficiary.beneficiary_id, {
+        nickname: beneficiaryForm.nickname.trim(),
+        beneficiary_name: beneficiaryForm.beneficiary_name.trim(),
+        destination_account_num: beneficiaryForm.destination_account_num.trim(),
+        destination_ifsc: beneficiaryForm.destination_ifsc.trim().toUpperCase(),
+        bank_name: beneficiaryForm.bank_name.trim() || undefined,
+        is_verified: beneficiaryForm.is_verified,
+      });
+
+      const bRes = await api.listBeneficiaries({ cid: selectedCustomer.cid });
+      setCustomerBeneficiaries(bRes.data || []);
+      setIsEditBeneficiaryModal(false);
+      setStatusMessage({ type: 'success', text: `Beneficiary "${beneficiaryForm.nickname}" updated.` });
+    } catch (err: any) {
+      setBeneficiaryError(err.message || 'Failed to update beneficiary.');
+    } finally {
+      setIsSubmittingBeneficiary(false);
+    }
+  };
+
+  const handleDeleteBeneficiary = async (bId: string) => {
+    if (!selectedCustomer) return;
+    if (!confirm('Are you sure you want to remove this transfer payee?')) return;
+    try {
+      await api.deleteBeneficiary(bId);
+      const bRes = await api.listBeneficiaries({ cid: selectedCustomer.cid });
+      setCustomerBeneficiaries(bRes.data || []);
+      setStatusMessage({ type: 'success', text: 'Beneficiary removed.' });
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete beneficiary.');
+    }
+  };
+
   // Open Edit Modal
   const openEditModal = (cust: Customer) => {
     setSelectedCustomer(cust);
@@ -199,6 +383,7 @@ export const CustomersPage: React.FC = () => {
       state: cust.state || '',
       pincode: cust.pincode || '',
       emp_id: cust.emp_id ? String(cust.emp_id) : '',
+      status: cust.status || 'ACTIVE',
     });
     setEditError(null);
     setIsEditOpen(true);
@@ -220,6 +405,7 @@ export const CustomersPage: React.FC = () => {
         state: editForm.state.trim() || undefined,
         pincode: editForm.pincode.trim() || undefined,
         emp_id: editForm.emp_id ? editForm.emp_id : undefined,
+        status: editForm.status,
       });
       setIsEditOpen(false);
       setStatusMessage({ type: 'success', text: `Customer CUST-${selectedCustomer.cid} updated successfully.` });
@@ -659,6 +845,20 @@ export const CustomersPage: React.FC = () => {
                             PRIMARY
                           </Badge>
                         )}
+                        <button
+                          onClick={() => openEditPhone(p)}
+                          className="p-1 rounded text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors ml-1"
+                          title="Edit Phone"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePhone(p.phone)}
+                          className="p-1 rounded text-obsidian-400 hover:text-rose-400 hover:bg-obsidian-800 transition-colors"
+                          title="Delete Phone"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -757,6 +957,66 @@ export const CustomersPage: React.FC = () => {
                       <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-obsidian-800/50 last:border-0 font-mono">
                         <span className="text-violet-300">{c.pno}</span>
                         <span className="text-obsidian-400 text-[10px]">{c.type}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Saved Transfer Beneficiaries (beneficiary 1:N) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-violet-400" />
+                  Saved Transfer Payees (beneficiary 1:N)
+                </h4>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={openAddBeneficiary}
+                  icon={<PlusCircle className="w-3.5 h-3.5" />}
+                >
+                  Add Payee
+                </Button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-obsidian-950 border border-obsidian-800">
+                {customerBeneficiaries.length === 0 ? (
+                  <p className="text-xs text-obsidian-500 italic">No transfer beneficiaries recorded for this customer.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {customerBeneficiaries.map((b) => (
+                      <div
+                        key={b.beneficiary_id}
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-obsidian-900 border border-obsidian-800 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-white font-medium">{b.beneficiary_name}</span>
+                            <Badge variant="violet" size="xs">{b.nickname}</Badge>
+                            {b.is_verified && <Badge variant="emerald" size="xs">VERIFIED</Badge>}
+                          </div>
+                          <div className="text-[11px] text-obsidian-400 font-mono mt-0.5">
+                            A/C: {b.destination_account_num} • IFSC: {b.destination_ifsc} {b.bank_name ? `• ${b.bank_name}` : ''}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEditBeneficiary(b)}
+                            className="p-1.5 rounded-lg text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors"
+                            title="Edit Payee Details"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBeneficiary(b.beneficiary_id)}
+                            className="p-1.5 rounded-lg text-obsidian-400 hover:text-rose-400 hover:bg-obsidian-800 transition-colors"
+                            title="Remove Payee"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -943,18 +1203,30 @@ export const CustomersPage: React.FC = () => {
             />
           </div>
 
-          <Select
-            label="Assigned Relationship Officer (Employee)"
-            value={editForm.emp_id}
-            onChange={(e) => setEditForm({ ...editForm, emp_id: e.target.value })}
-          >
-            <option value="">None (Unassigned)</option>
-            {employees.map((emp) => (
-              <option key={emp.emp_id} value={emp.emp_id}>
-                {emp.first_name} {emp.last_name || ''} (EMP-{emp.emp_id})
-              </option>
-            ))}
-          </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Assigned Relationship Officer (Employee)"
+              value={editForm.emp_id}
+              onChange={(e) => setEditForm({ ...editForm, emp_id: e.target.value })}
+            >
+              <option value="">None (Unassigned)</option>
+              {employees.map((emp) => (
+                <option key={emp.emp_id} value={emp.emp_id}>
+                  {emp.first_name} {emp.last_name || ''} (EMP-{emp.emp_id})
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              label="Customer Status"
+              value={editForm.status}
+              onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
+            >
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+              <option value="SUSPENDED">SUSPENDED</option>
+            </Select>
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
             <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditOpen(false)}>
@@ -962,6 +1234,214 @@ export const CustomersPage: React.FC = () => {
             </Button>
             <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingEdit}>
               Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: EDIT PHONE NUMBER */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isEditPhoneModal}
+        onClose={() => setIsEditPhoneModal(false)}
+        title="Edit Contact Phone"
+        description={`Update registered contact number for CUST-${selectedCustomer?.cid}`}
+        size="sm"
+      >
+        <form onSubmit={handleUpdatePhone} className="space-y-4">
+          {editPhoneError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{editPhoneError}</span>
+            </div>
+          )}
+
+          <Input
+            label="Phone Number *"
+            value={editPhoneForm.phone}
+            onChange={(e) => setEditPhoneForm({ ...editPhoneForm, phone: e.target.value })}
+            required
+          />
+
+          <Select
+            label="Phone Classification"
+            value={editPhoneForm.phone_type}
+            onChange={(e) => setEditPhoneForm({ ...editPhoneForm, phone_type: e.target.value })}
+          >
+            <option value="MOBILE">MOBILE</option>
+            <option value="HOME">HOME</option>
+            <option value="WORK">WORK</option>
+            <option value="OTHER">OTHER</option>
+          </Select>
+
+          <div className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              id="is_primary_checkbox"
+              checked={editPhoneForm.is_primary}
+              onChange={(e) => setEditPhoneForm({ ...editPhoneForm, is_primary: e.target.checked })}
+              className="rounded border-obsidian-700 bg-obsidian-800 text-cyan-500 focus:ring-0"
+            />
+            <label htmlFor="is_primary_checkbox" className="text-xs text-obsidian-200">
+              Set as Primary Contact Number
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditPhoneModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingEditPhone}>
+              Save Phone
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: ADD BENEFICIARY */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isAddBeneficiaryModal}
+        onClose={() => setIsAddBeneficiaryModal(false)}
+        title="Add Transfer Payee / Beneficiary"
+        description={`Record verified payee for CUST-${selectedCustomer?.cid}`}
+        size="md"
+      >
+        <form onSubmit={handleAddBeneficiary} className="space-y-4">
+          {beneficiaryError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{beneficiaryError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Beneficiary Nickname *"
+              placeholder="e.g. Landlord, Mom, Business"
+              value={beneficiaryForm.nickname}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, nickname: e.target.value })}
+              required
+            />
+            <Input
+              label="Payee Legal Name *"
+              placeholder="Full Name as per bank account"
+              value={beneficiaryForm.beneficiary_name}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, beneficiary_name: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Destination Account Number *"
+              placeholder="Account Number"
+              value={beneficiaryForm.destination_account_num}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, destination_account_num: e.target.value })}
+              required
+            />
+            <Input
+              label="Destination IFSC Code *"
+              placeholder="e.g. FINO0001001"
+              value={beneficiaryForm.destination_ifsc}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, destination_ifsc: e.target.value.toUpperCase() })}
+              required
+            />
+          </div>
+
+          <Input
+            label="Bank Name"
+            placeholder="e.g. Finora Bank, State Bank of India"
+            value={beneficiaryForm.bank_name}
+            onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, bank_name: e.target.value })}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsAddBeneficiaryModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingBeneficiary}>
+              Save Payee
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: EDIT BENEFICIARY */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isEditBeneficiaryModal}
+        onClose={() => setIsEditBeneficiaryModal(false)}
+        title={`Edit Payee: ${selectedBeneficiary?.nickname}`}
+        description="Update transfer beneficiary coordinates"
+        size="md"
+      >
+        <form onSubmit={handleUpdateBeneficiary} className="space-y-4">
+          {beneficiaryError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{beneficiaryError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Beneficiary Nickname *"
+              value={beneficiaryForm.nickname}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, nickname: e.target.value })}
+              required
+            />
+            <Input
+              label="Payee Legal Name *"
+              value={beneficiaryForm.beneficiary_name}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, beneficiary_name: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Destination Account Number *"
+              value={beneficiaryForm.destination_account_num}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, destination_account_num: e.target.value })}
+              required
+            />
+            <Input
+              label="Destination IFSC Code *"
+              value={beneficiaryForm.destination_ifsc}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, destination_ifsc: e.target.value.toUpperCase() })}
+              required
+            />
+          </div>
+
+          <Input
+            label="Bank Name"
+            value={beneficiaryForm.bank_name}
+            onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, bank_name: e.target.value })}
+          />
+
+          <div className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              id="is_verified_checkbox"
+              checked={beneficiaryForm.is_verified}
+              onChange={(e) => setBeneficiaryForm({ ...beneficiaryForm, is_verified: e.target.checked })}
+              className="rounded border-obsidian-700 bg-obsidian-800 text-cyan-500 focus:ring-0"
+            />
+            <label htmlFor="is_verified_checkbox" className="text-xs text-obsidian-200">
+              Verified Payee Status
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditBeneficiaryModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingBeneficiary}>
+              Save Payee Changes
             </Button>
           </div>
         </form>

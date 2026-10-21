@@ -94,6 +94,19 @@ export interface Nominee {
   contact_phone?: string;
 }
 
+export interface Beneficiary {
+  beneficiary_id: string;
+  cid: string;
+  nickname: string;
+  beneficiary_name: string;
+  destination_account_num: string;
+  destination_ifsc: string;
+  bank_name?: string;
+  internal_acc_id?: string;
+  is_verified: boolean;
+  created_at?: string;
+}
+
 export interface CreditCard {
   pno: string;
   cid: string;
@@ -158,7 +171,7 @@ export interface ResponsibleFor {
   l_id?: string;
   t_id?: string;
   assigned_date: string;
-  status: 'ACTIVE' | 'COMPLETED' | 'TRANSFERRED';
+  status: 'ACTIVE' | 'COMPLETED' | 'REVOKED' | 'TRANSFERRED';
   notes?: string;
 }
 

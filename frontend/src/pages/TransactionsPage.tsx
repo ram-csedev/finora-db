@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  Edit2,
   Wallet,
   CornerDownRight,
 } from 'lucide-react';
@@ -86,6 +87,12 @@ export const TransactionsPage: React.FC = () => {
   });
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+
+  // Edit Transaction Memo State
+  const [isEditMemoModal, setIsEditMemoModal] = useState(false);
+  const [editMemoDescription, setEditMemoDescription] = useState('');
+  const [isSubmittingMemo, setIsSubmittingMemo] = useState(false);
+  const [editMemoError, setEditMemoError] = useState<string | null>(null);
 
   // Load auxiliary lists (accounts & employees)
   useEffect(() => {
@@ -239,6 +246,32 @@ export const TransactionsPage: React.FC = () => {
       setTransferError(err.message || 'Transfer failed (insufficient balance or account hold).');
     } finally {
       setIsSubmittingTransfer(false);
+    }
+  };
+
+  const openEditMemo = (tx: Transaction) => {
+    setSelectedTx(tx);
+    setEditMemoDescription(tx.description || '');
+    setEditMemoError(null);
+    setIsEditMemoModal(true);
+  };
+
+  const handleUpdateMemo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTx) return;
+    setIsSubmittingMemo(true);
+    setEditMemoError(null);
+    try {
+      await api.updateTransaction(selectedTx.t_id, {
+        description: editMemoDescription.trim(),
+      });
+      setIsEditMemoModal(false);
+      setStatusMessage({ type: 'success', text: `Transaction TXN-${selectedTx.t_id} memo updated successfully.` });
+      fetchTransactions();
+    } catch (err: any) {
+      setEditMemoError(err.message || 'Failed to update transaction memo.');
+    } finally {
+      setIsSubmittingMemo(false);
     }
   };
 
@@ -423,7 +456,7 @@ export const TransactionsPage: React.FC = () => {
               <TableHead>Channel / Mode</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Timestamp</TableHead>
-              <TableHead className="text-right">Details</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -467,16 +500,25 @@ export const TransactionsPage: React.FC = () => {
                       {tx.trans_date ? new Date(tx.trans_date).toLocaleString() : '—'}
                     </TableCell>
                     <TableCell className="text-right">
-                      <button
-                        onClick={() => {
-                          setSelectedTx(tx);
-                          setIsDetailsModal(true);
-                        }}
-                        className="p-1.5 rounded-lg text-obsidian-400 hover:text-cyan-400 hover:bg-obsidian-800 transition-colors"
-                        title="View Full Transaction Telemetry"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => {
+                            setSelectedTx(tx);
+                            setIsDetailsModal(true);
+                          }}
+                          className="p-1.5 rounded-lg text-obsidian-400 hover:text-cyan-400 hover:bg-obsidian-800 transition-colors"
+                          title="View Full Transaction Telemetry"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => openEditMemo(tx)}
+                          className="p-1.5 rounded-lg text-obsidian-400 hover:text-amber-400 hover:bg-obsidian-800 transition-colors"
+                          title="Edit Transaction Memo"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -837,6 +879,63 @@ export const TransactionsPage: React.FC = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: EDIT TRANSACTION MEMO */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isEditMemoModal}
+        onClose={() => setIsEditMemoModal(false)}
+        title={`Edit Transaction Memo: TXN-${selectedTx?.t_id}`}
+        description="Update operational notes or remittance memo in CockroachDB transaction ledger"
+        size="md"
+      >
+        <form onSubmit={handleUpdateMemo} className="space-y-4">
+          {editMemoError && (
+            <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{editMemoError}</span>
+            </div>
+          )}
+
+          <div className="p-3 rounded-lg bg-obsidian-900 border border-obsidian-800 space-y-1.5 text-xs font-mono">
+            <div className="flex justify-between">
+              <span className="text-obsidian-400">Account:</span>
+              <span className="text-white">ACC-{selectedTx?.acc_id}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-obsidian-400">Amount:</span>
+              <span className="text-emerald-400 font-bold">
+                ₹{selectedTx ? parseFloat(String(selectedTx.amount)).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '0.00'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-obsidian-400">Channel / Type:</span>
+              <span className="text-cyan-300">{selectedTx?.type} ({selectedTx?.mode})</span>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-obsidian-400 italic">
+            Note: Financial amounts, accounts, and ledger timestamps are cryptographically protected and immutable under CockroachDB serializable isolation. Only operational descriptions/memos are updatable.
+          </p>
+
+          <Input
+            label="Transaction Memo / Narration"
+            placeholder="e.g. Updated payment reference or invoice note"
+            value={editMemoDescription}
+            onChange={(e) => setEditMemoDescription(e.target.value)}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-obsidian-800">
+            <Button variant="ghost" size="sm" type="button" onClick={() => setIsEditMemoModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isSubmittingMemo}>
+              Save Memo
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
